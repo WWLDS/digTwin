@@ -36,18 +36,18 @@ runif(1)
 ### Doctors parameters ---
 ## NEW ---
 # capacity
-capDistDrMean
-capDistDrSD
+capDistDrMean <- 48.12
+capDistDrSD <- 16.84
 # intake wait time
-waitDistDrMean
-waitDistDrSD
+waitDistDrMean <- 3.47
+waitDistDrSD <- 1.54
 # demand (arrival rate)
-demDistDrShape
-demDistDrScale
+demDistDrShape <- 2.28
+demDistDrScale <- 30.88
 # initial waiting list size
 initWlDr <- 782
 # dist of FU count
-fuCountDistDrRate
+fuCountDistDrRate <- 1.03
 # follow up where
 # make this a function?
 # cancellation chance
@@ -57,16 +57,17 @@ fuCountDistDrRate
 ### Sisters parameters ---
 ## NEW ---
 # capacity
-capDistSis
+capDistSisMean <- 67.4
+capDistSisSD <- 23.58
 # intake wait time
-waitDistMean
-waitDistSD
+waitDistNurseMean <- 3.18
+waitDistNurseSD <- 1.33
 # demand (arrival rate)
-demDistRate
+demDistRate <- 3.13
 # initial waiting list size
 initWlSister <- 60
 # likeilihood of FU
-sisPropFU
+sisPropFU <- 0.44
 # follow up where
 # make this a function?
 # cancellation chance
@@ -76,8 +77,8 @@ sisPropFU
 ### Shared parameters ---
 ## FU
 # wait between FU
-waitBetFUDrSisMean
-waitBetFUDrSisSD
+waitBetFUDrSisMean <- 3.51
+waitBetFUDrSisSD <- 1.16
 
 ### DERM parameters ---
 # capacity
