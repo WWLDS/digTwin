@@ -141,7 +141,7 @@ mutate(clinicGrouped = case_when(
 
 ### Sankey ---------------------------------------------------------------------
 prepSan <- dermClinicOrder |>
-    dplyr::select(c(3:6)) |>
+    dplyr::select(c(3:106)) |>
     rename_with( ~ paste0("clinic", .x))
 
 # create links
@@ -178,7 +178,9 @@ sankeyNetwork(Links = links, Nodes = nodes, Source = 'source_id',
 propEachBranch <- links |>
     group_by(source, target, .drop = F) |>
     summarise(count = n()) |>
-    mutate(prop = count / sum(count))
+    mutate(prop = count / sum(count)) |>
+    mutate(prop = round(prop, 2))
+saveRDS(propEachBranch, file = here("propClinic.rds"))
 
 # prop of first appt (NEW) being Dr or Nurse
 newClinicProp <- links |>

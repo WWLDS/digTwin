@@ -37,7 +37,7 @@ data <- read_csv(here("rawData/dermSimData.csv"))
 # filter to dermatology and select relevant features for simulation building
 derm <- data |>
     filter(specialty_spec_desc %in% "Dermatology",
-           time_to_be_seen_days < 2000,
+           # time_to_be_seen_days < 2000,
            appointment_dt < "2024-07-01",
            !(appointment_dt == "2023-05-08"),
            !(appointment_dt == "2023-01-02")) |>
@@ -52,7 +52,7 @@ derm <- data |>
 # understand Dr clinics
 clinicLastAppt <- data |>
     filter(specialty_spec_desc %in% "Dermatology",
-           time_to_be_seen_days < 2000,
+           # time_to_be_seen_days < 2000,
            appointment_dt < "2024-07-01",
            !(appointment_dt == "2023-05-08"),
            !(appointment_dt == "2023-01-02")) |>
@@ -71,13 +71,13 @@ clinicInfo <- data |>
 join <- left_join(clinicInfo, clinicLastAppt, by = "clinic_name") |>
     dplyr::select(clinic_name, clinic_code, count, appointment_dt)
 
-# pull only Sisters info
+# pull only Dr info
 drOnly <- join |>
     filter(grepl(c("*DR"), clinic_name),
            appointment_dt > "2024-01-01") |>
     pull(clinic_name)
 
-# filter derm df to only Sister clinics
+# filter derm df to only Dr clinics
 drDf <- derm |>
     filter(clinic_name %in% drOnly)
 
@@ -94,6 +94,8 @@ wlSize <- data |>
 capacity <- drDf |>
     filter(
            appointment_dt > "2023-09-01") |>
+    group_by(referral_serial, appointment_dt) |>
+    distinct(referral_serial, .keep_all = T) |>
     mutate(weekday = as.factor(weekday)) |>
     group_by(weekday, appointment_dt) |>
     summarise(count = n())
@@ -115,11 +117,11 @@ capDist <- capacity |>
 capDistDr <- fitdistr(capDist, "normal")
 capDistDrMean <- unname(capDistDr$estimate[1]) /7*5
 capDistDrSD <- unname(capDistDr$estimate[2]) /7*5
-
+capDistDr
 
 #### DEMAND #### ---------------------------------------------------------------
 # daily demand for New appts
-demand <- drDf |>
+demand <- derm |>
     filter(appointment_type == "New",
            appointment_dt > "2023-09-01") |>
     group_by(referral_serial) |>
@@ -138,41 +140,77 @@ ggplot(demand, aes(x = count)) +
 # modelling
 demDist <- demand |>
     pull(count)
-demDist <- fitdistr(demDist, "weibull")
+demDist <- fitdistr(demDist, "normal")
 demDistDrShape <- unname(demDist$estimate[1])
 demDistDrScale <- unname(demDist$estimate[2])
 
 
 #### WAIT TIME ON LIST #### ----------------------------------------------------
 # overall wait for New appt
-wait <- drDf |>
-    filter(appointment_type == "New",
-           appointment_dt > "2023-09-01") |>
-    group_by(referral_serial) |>
-    slice(which.min(appointment_dt))
+referral_priority <- drDf |>
+    distinct(referral_priority) |>
+    pull()
+for(i in referral_priority) {
+    wait <- drDf |>
+        filter(appointment_type == "New",
+              appointment_dt > "2023-09-01",
+              referral_priority == "Routine") |>
+        group_by(referral_serial) |>
+        slice(which.min(appointment_dt))
 
-# plot wait
-ggplot(wait, aes(x = time_to_be_seen_days)) +
-    geom_density()
+    # plot wait
+    test <- ggplot(wait, aes(x = time_to_be_seen_days)) +
+        geom_density() +
+        labs(title = i)
+    print(test)
 
-#modelling
-waitDist <- wait |>
-    filter(time_to_be_seen_days > 0) |>
-    pull(time_to_be_seen_days)
-waitDistDr <- fitdistr(waitDist, "lognormal")
-waitDistDrMean <- unname(waitDistDr$estimate[1])
-waitDistDrSD <- unname(waitDistDr$estimate[2])
+    #modelling
+    waitDist <- wait |>
+        filter(time_to_be_seen_days > 0) |> 
+                   # time_to_be_seen_days < 15) |>
+        pull(time_to_be_seen_days) 
+    
+    waitDistDr <- fitdistr(waitDist, "normal")
+    waitDistDrMean <- unname(waitDistDr$estimate[1])
+    cat("\nDist", i, "\n=", waitDistDrMean)
+    waitDistDrSD <- unname(waitDistDr$estimate[2])
+    cat("\nDist", i, "\n=", waitDistDrSD)
+}
+test <- as.data.frame(pmax(0, rnorm(100, 10, 3.4))) |>
+    rename("col" = 1) |>
+    ggplot(aes(x = col)) +
+    geom_histogram()
+test
 
+#### Priorities #### -----------------------------------------------------------
+prioDr <- drDf |>
+    group_by(referral_priority) |>
+    summarise(count = n()) |>
+    mutate(prop = count/sum(count)) |>
+    dplyr::select(-count)
+
+# to understand - done
+prioUnder <- drDf |>
+    group_by(referral_serial, referral_priority) |>
+    summarise(count = n()) |>
+    mutate(prop = count / sum(count))
+# seems like a referral keeps the same priority throughout traj
 
 #### What prop have a follow up ? #### -----------------------------------------
 propFU <- data |>
     filter(
-        grepl(c("*DR"), clinic_name),
-        !(is.na(DischargeDate))) |>
+        grepl(c("*DR"), clinic_name)) |>
+        # !(is.na(DischargeDate))) |>
     group_by(referral_serial) |>
     summarise(count = n()) |>
-    mutate(count = count - 1)
+    mutate(count = count - 1) |>
+    dplyr::select(-referral_serial) |>
+    ungroup()
 
+mean <- propFU |>
+    summarise(mean = mean(count))
+var <- propFU |>
+    summarise(var = var(count))
 
 #modelling
 fuCountDist <- propFU |>
@@ -215,7 +253,7 @@ waitVal <- waitBet |>
 # dist
 waitBetFUDrSis <- waitBet |>
     pull(dayDiff)
-waitBetFUDrSis <- fitdistr(waitBetFUDrSis, "lognormal")
+waitBetFUDrSis <- fitdistr(waitBetFUDrSis, "weibull")
 waitBetFUDrSisMean <- unname(waitBetFUDrSis$estimate[1])
 waitBetFUDrSisSD <- unname(waitBetFUDrSis$estimate[2])
 
