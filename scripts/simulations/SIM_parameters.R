@@ -20,9 +20,44 @@ librarian::shelf(tidyverse, here, glue, simmer, simmer.plot, data.table, MASS)
 # ------------------------------------------------------------------------------
 # simulation parameters
 
+# probability of attending each clinic
+propClinic <- read_rds(here("propClinic.rds")) |>
+    rename("current_clinic" = source,
+           "next_clinic" = target) |>
+    dplyr::select(-c(count))
+
+propClinic <- transform(propClinic,
+                        apptNum = as.numeric(gsub("[^0-9]", "", 
+                                                  propClinic$current_clinic)),
+                        current_clinic = gsub("_[0-9]+", "", current_clinic),
+                        next_clinic = gsub("_[0-9]+", "", next_clinic))
+# write_csv(propClinic, here("propClinic.csv"))
+
+# Function to select the next clinic based on current clinic and follow-up number
+select_next_clinic <- function(current_clinic, follow_up, propClinic) {
+    relevant_rows <- propClinic[propClinic$current_clinic == current_clinic & 
+                                    propClinic$apptNum == follow_up, ]
+    
+    if (nrow(relevant_rows) > 0) {
+        next_clinic <- sample(relevant_rows$next_clinic, 1, prob = relevant_rows$prop)
+        return(next_clinic)
+    } else {
+        return(NA)  # Return NA if no match is found
+    }
+}
+results <- as.data.frame(replicate(100, select_next_clinic("Specialist", 5, propClinic)))
+
+# Define the number of clinics
+num_clinics <- 4
+
+# Define clinic names
+clinic_names <- c("Dr", "Sister", "Immuno", "Derm")
+
+
+
 ### first appt ---
 # Proportion of NEW clinics that are Dr (the rest are Nurse)
-firstIsDr
+firstIsDr <- 0.84
 
 fn_firstAppt <- function () {
     
@@ -179,6 +214,15 @@ chances <- function() {
                                 2, 3)))
     return(out)
 }
+
+firstAppt <- function () {
+    
+    out <- if(runif(1) <= firstIsDr) {0} else {1}
+    
+    return(out)
+    
+}
+firstIsDr
 
 # summary dataframe function
 fn_summarise <- fn_summarize <- function(sim_out, keys = NULL) {
