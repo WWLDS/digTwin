@@ -35,40 +35,34 @@ get_followup_count <- function(clinic) {
     }
 }
 
-# Function to model waiting time before the first visit, depending on the first clinic
-get_initial_waiting_time <- function(first_clinic) {
+#### CHANGE NUMBERS HERE
+# Function to model waiting time before the first visit, depending on the first clinic and priority
+get_initial_waiting_time <- function(first_clinic, priority) {
     if (first_clinic == "Dr") {
-        return(pmax(0, rlogis(1, 3.47, 1.54)))  # Ensure non-negative waiting time
+        if (priority == "2 week") {
+            return(pmax(0, rnorm(1, 10.1, 3.4)))  # Shortest wait time
+        } else if (priority == "Urgent") {
+            return(pmax(0, rnorm(1, 144, 117)))  # Medium wait time
+        } else if (priority == "Routine") {
+            return(pmax(0, rnorm(1, 220, 128.8)))  # Longest wait time
+        }
     } else if (first_clinic == "Sister") {
-        return(pmax(0, rlogis(1, 3.18, 1.33)))  # Ensure non-negative waiting time
+        if (priority == "Routine") {
+            return(pmax(0, rnorm(1, 150, 100)))
     } else {
         return(0)  # Default, although it shouldn't happen since we only have Dr and Sister
+        }
     }
 }
 
 # Function to model waiting time before each follow-up visit, depending on the next clinic
 get_followup_waiting_time <- function(next_clinic) {
     if (next_clinic %in% c("Dr", "Sister")) {
-        return(pmax(0, rweibull(1, 1, 57.5)))  # Ensure non-negative waiting time
+        return(pmax(0, rweibull(1, 1, 50)))  # Ensure non-negative waiting time
     } else if (next_clinic %in% c("Specialist", "Immuno")) {
         return(pmax(0, rpois(1, 2.785)))  # Ensure non-negative waiting time
     } else {
         return(0)  # Default, just in case
-    }
-}
-
-# Function to determine the probability of discharge after each visit
-get_discharge_probability <- function(clinic) {
-    if (clinic == "Dr") {
-        return(0.1)
-    } else if (clinic == "Sister") {
-        return(0.2)
-    } else if (clinic == "Specialist") {
-        return(0.05)
-    } else if (clinic == "Immuno") {
-        return(0.15)
-    } else {
-        return(0)
     }
 }
 
@@ -83,7 +77,7 @@ get_daily_slots <- function() {
 }
 
 # Initialize variables
-days <- 100  # Number of days to simulate
+days <- 500  # Number of days to simulate
 initial_waiting_list <- 850
 waiting_list <- initial_waiting_list
 waiting_list_sizes <- numeric(days)  # Vector to store waiting list size at the end of each day
@@ -136,10 +130,18 @@ for (day in 1:days) {
         
         # Initialize patient data
         first_clinic <- sample(c("Dr", "Sister"), 1, prob = c(0.84, 0.16))
+        
+        # Select priority based on the first clinic
+        if (first_clinic == "Dr") {
+            priority <- sample(c("2 week", "Urgent", "Routine"), 1, prob = c(0.495, 0.073, 0.432))
+        } else {
+            priority <- "Routine"  # Default priority for Sister clinic
+        }
+        
         current_clinic <- first_clinic
         followup_count <- 1
         total_followups <- get_followup_count(first_clinic)
-        waiting_time <- get_initial_waiting_time(first_clinic)  # Use the specified logistic distribution for initial waiting time
+        waiting_time <- get_initial_waiting_time(first_clinic, priority)  # Use the specified distribution for initial waiting time
         total_days <- waiting_time  # Start with the initial waiting time
         discharged <- FALSE
         
@@ -212,6 +214,7 @@ for (day in 1:days) {
                 Total_Followups = total_followups,
                 Total_Days = total_days,
                 Waiting_Time = waiting_time,  # Store the calculated initial waiting time
+                Priority = priority,  # Include the patient's priority
                 Discharged = discharged,
                 stringsAsFactors = FALSE
             )

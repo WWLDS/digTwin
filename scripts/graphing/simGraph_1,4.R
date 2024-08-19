@@ -34,14 +34,16 @@ ggplot(discharge_rate, aes(x = First_Clinic, y = Discharge_Rate, fill = First_Cl
 
 library(ggplot2)
 
-# Transform the data frame to long format for easier plotting
-waiting_list_sizes_long <- pivot_longer(waiting_list_sizes_per_clinic, cols = c(Dr_Waiting_List_Size, Sister_Waiting_List_Size, Specialist_Waiting_List_Size, Immuno_Waiting_List_Size),
-                                        names_to = "Clinic", values_to = "Waiting_List_Size")
+# Create a data frame for plotting
+waiting_list_df <- data.frame(
+    Day = 1:days,
+    Waiting_List_Size = waiting_list_sizes
+)
 
-# Plot the waiting list size over time per clinic
-ggplot(waiting_list_sizes_long, aes(x = Day, y = Waiting_List_Size, color = Clinic)) +
-    geom_line(size = 1) +
-    labs(title = "Waiting List Size Over Time per Clinic",
+# Plot the waiting list size over time
+ggplot(waiting_list_df, aes(x = Day, y = Waiting_List_Size)) +
+    geom_line(color = "blue", size = 1) +
+    labs(title = "Waiting List Size Over Time",
          x = "Day",
          y = "Number of Patients on Waiting List") +
     theme_minimal()
@@ -58,4 +60,54 @@ ggplot(processed_df, aes(x = Day, y = Patients_Processed)) +
     labs(title = "Number of Patients Processed Each Day",
          x = "Day",
          y = "Number of Patients Processed") +
+    theme_minimal()
+
+
+#### Priorities ----------------------------------------------------------------
+# Analyze the distribution of priorities
+priority_distribution <- results %>%
+    group_by(Priority) %>%
+    summarize(Count = n())
+
+# Print the distribution
+print(priority_distribution)
+
+# Visualize the priority distribution
+ggplot(priority_distribution, aes(x = Priority, y = Count, fill = Priority)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Distribution of Patient Priorities",
+         x = "Priority",
+         y = "Number of Patients") +
+    theme_minimal()
+
+# Analyze the average waiting time by priority
+waiting_time_by_priority <- results %>%
+    group_by(Priority) %>%
+    summarize(Average_Waiting_Time = mean(Waiting_Time))
+
+# Print the average waiting time by priority
+print(waiting_time_by_priority)
+
+# Visualize the average waiting time by priority
+ggplot(waiting_time_by_priority, aes(x = Priority, y = Average_Waiting_Time, fill = Priority)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Average Waiting Time by Patient Priority",
+         x = "Priority",
+         y = "Average Waiting Time (days)") +
+    theme_minimal()
+
+# Analyze the total days in the system by priority
+total_days_by_priority <- results %>%
+    group_by(Priority) %>%
+    summarize(Average_Total_Days = mean(Total_Days))
+
+# Print the average total days by priority
+print(total_days_by_priority)
+
+# Visualize the total days in the system by priority
+ggplot(total_days_by_priority, aes(x = Priority, y = Average_Total_Days, fill = Priority)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Average Total Days in System by Patient Priority",
+         x = "Priority",
+         y = "Average Total Days") +
     theme_minimal()
