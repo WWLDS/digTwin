@@ -16,7 +16,7 @@ ggplot(results, aes(x = Total_Followups)) +
     theme_minimal()
 
 # 3. Distribution of Total Days Spent in the System
-ggplot(results, aes(x = Total_Days)) +
+ggplot(results, aes(x = Total_Days_on_list)) +
     geom_histogram(binwidth = 5, fill = "coral", color = "black") +
     labs(title = "Distribution of Total Days Spent in the System", x = "Total Days", y = "Count of Patients") +
     theme_minimal()
@@ -96,18 +96,3 @@ ggplot(waiting_time_by_priority, aes(x = Priority, y = Average_Waiting_Time, fil
          y = "Average Waiting Time (days)") +
     theme_minimal()
 
-# Analyze the total days in the system by priority
-total_days_by_priority <- results %>%
-    group_by(Priority) %>%
-    summarize(Average_Total_Days = mean(Total_Days))
-
-# Print the average total days by priority
-print(total_days_by_priority)
-
-# Visualize the total days in the system by priority
-ggplot(total_days_by_priority, aes(x = Priority, y = Average_Total_Days, fill = Priority)) +
-    geom_bar(stat = "identity") +
-    labs(title = "Average Total Days in System by Patient Priority",
-         x = "Priority",
-         y = "Average Total Days") +
-    theme_minimal()
