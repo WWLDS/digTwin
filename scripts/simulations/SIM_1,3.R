@@ -2,7 +2,7 @@ library(simmer)
 library(dplyr)
 
 # Load the probabilities DataFrame
-probabilities_df <- read.csv("/path/to/propClinic.csv")
+propClinic <- read_csv(here("propClinic.csv"))
 
 # Function to get the next clinic based on current clinic and follow-up number
 get_next_clinic <- function(current_clinic, followup_count) {

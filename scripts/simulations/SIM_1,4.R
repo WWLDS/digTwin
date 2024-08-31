@@ -1,7 +1,7 @@
 set.seed(123)  # For reproducibility
 
 # Arrival rate parameters (Weibull distribution)
-arrival_mean <- 200
+arrival_mean <- 30
 arrival_sd <- 13.28
 
 # Sample next clinic probabilities DataFrame

@@ -12,8 +12,8 @@ if(!require(librarian)){
     install.packages("librarian")
     library(librarian)
 }
-librarian::shelf(tidyverse, here, glue, simmer, simmer.plot, data.table, MASS)
-
+librarian::shelf(tidyverse, here, glue, simmer, simmer.plot, data.table, MASS,
+                 parallel)
 
 ### ----------------------------------------------------------------------------
 
