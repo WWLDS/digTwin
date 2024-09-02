@@ -1,7 +1,13 @@
+# to do
+# ALL wait times
+# priorities
+# distributions
+# timeout after seize
+
 
 # # Load the CSV file (update the path as necessary)
 # propClinic <- read_csv(here("propClinic.csv"))
-
+write_csv(propClinic, here("propClinicNum.csv"))
 # Create a mapping vector
 clinic_map <- c("Dr" = 1, "Sister" = 2, "Immuno" = 3, "Specialist" = 4)
 
@@ -10,29 +16,26 @@ propClinic <- propClinic %>%
     mutate(current_clinic = clinic_map[current_clinic],
            next_clinic = clinic_map[next_clinic])
 
-# Function to determine the number of follow-ups
-follow_up_count <- function() {
-    sample(1:50, 1)  # Example: Randomly select between 1 and 5 follow-ups
-}
 
 # Function to get the next clinic based on current clinic and follow-up number
 get_next_clinic <- function(current_clinic, followup_count) {
+    # Filter the clinic options based on the current clinic and follow-up count
     clinic_options <- propClinic[propClinic$current_clinic == current_clinic &
                                      propClinic$apptNum == followup_count, ]
     
-    if (nrow(clinic_options) == 0) {
-        return(NA)
+    # If no options are available, return 1 (default to Doctor Clinic)
+    if (nrow(clinic_options) < 2) {
+        warning("No valid clinic options found for current_clinic =", current_clinic,
+                " and followup_count =", followup_count, ". Defaulting to Doctor Clinic.")
+        return(4)  # Default to "Derm Clinic"
     }
-    
-    next_clinic <- sample(clinic_options$next_clinic, 1, prob = clinic_options$prop)
-    return(next_clinic)
+        # Sample the next clinic based on the provided probabilities
+        next_clinic <- sample(clinic_options$next_clinic, 1, prob = clinic_options$prop)
+        return(next_clinic)
 }
 
-# Function to determine number of available slots per day
-slots_per_day = 2
 
 # Define the patient trajectory
-
 ### ----------------------------------------------------------------------------
 # start simulation
 simmer_wrapper <- mclapply(1:5, function(i) {
@@ -41,45 +44,38 @@ simmer_wrapper <- mclapply(1:5, function(i) {
     
 patient_trajectory <- 
     trajectory() %>%
-    # Initialize attributes
-    # set_attribute("current_clinic", 1) %>%  # Assuming "1" refers to "Doctor Clinic" or similar
-    # set_attribute("followup_num", 1) %>%
+
     set_prioritization(c(0, NA, NA)) %>%
+    
     set_attribute(tag = "FuToDo", keys = "FuToDo", 
                   values = function() floor(rpois(1, 
                                                   fuCountDistDrRate))) %>%
-    set_attribute(tag = "ApptCounter", keys = "ApptCounter", 
-                  values = 0, mon = "+") %>%
-    # record time patient initially received appt letter
+    
     set_attribute(tag = "ToR", keys = "TimeOfRef",
                   values = function() now(.env = sim)) %>%
-
-    log_("Patient booked") %>%
-    timeout(function() rexp(1, rate = 1/5)) %>%  # Wait time
-
+#### CREATING PRIORITIES HERE - SHOULD I DO IT OUTSIDE FIRST DOCTOR BRANCH OR INSIDE?
     # Step 1: Initial visit to either Doctor or Sister Clinic
     branch(function() ifelse(runif(1) < firstIsDr, 1, 2), continue = TRUE,
            trajectory("Doctor Visit") %>%
+               branch(option = function(){
+                   
+               })
                seize("Doctor Clinic", 1) %>%
-               timeout(function() rnorm(1, mean = 20, sd = 5)) %>%
+               timeout(1) %>%
                release("Doctor Clinic", 1) %>%
                set_attribute("current_clinic", 1),  # 1 refers to Doctor Clinic
            trajectory("Sister Visit") %>%
                seize("Sister Clinic", 1) %>%
-               timeout(function() rnorm(1, mean = 15, sd = 5)) %>%
+               timeout(1) %>%
                release("Sister Clinic", 1) %>%
                set_attribute("current_clinic", 2)  # 2 refers to Sister Clinic
     ) %>%
     
-    set_attribute(tag = "ApptCounter", keys = "ApptCounter", 
-                  values = 1, mon = "+") %>%
-    
+    set_attribute(tag = "ApptCounter", keys = "ApptCounter", values = 1, mod = "+") %>%
     log_(function() {
-        current_clinic_name <- get_attribute(.env = sim, "current_clinic")
-        # current_clinic_name <- clinic_reverse_map[as.character(current_clinic_code)]
-        paste("Current clinic:", current_clinic_name)
+        paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
+    }) %>%
         
-    }) %>%  
     # Step 2: Follow-up appointments
     # trajectory() %>%
               branch(
@@ -90,66 +86,137 @@ patient_trajectory <-
                       # Determine the next clinic
                       next_clinic <- get_next_clinic(current_clinic, followup_num)
                       
+                      if (is.na(next_clinic)) {
+                          next_clinic <- "Discharge"
+                      }
+                      # next_clinic <- if(is.na(next_clinic)) {1} else {next_clinic}
                       # Map the clinic name to a numeric value to use in the branch
                       clinic_map <- c("Doctor Clinic" = 1, "Sister Clinic" = 2, 
-                                      "Immuno Clinic" = 3, "Derm Clinic" = 4)
+                                      "Immuno Clinic" = 3, "Derm Clinic" = 4,
+                                      "Discharge" = 5)
                       # Return the numeric value corresponding to the next clinic
-                      
                       return(clinic_map[next_clinic])
-                  }, continue = c(T,T,T,T),
+                  }, continue = c(T,T,T,T,F),
                   tag = "followup branch",
+                  
+                  # Doctor clinic
                   trajectory("Doctor Clinic") %>%
                       # log_("test") %>%
                       set_attribute("current_clinic", 1) %>%
                       set_attribute(tag = "Doctor", keys = "Doctor", 
-                                    values = 1, mon = "+") %>%
-                      set_attribute("FuCounter", function()
+                                    values = 1, mod = "+") %>%
+                      set_attribute("ApptCounter", function()
                           get_attribute(.env = sim, "ApptCounter") + 1) %>%
                       log_(function() {
-                          paste("this is: ", get_attribute(.env = sim, "Doctor"))
+                          paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
+                      }) %>%
+                      log_(function() {
+                          paste("this is: ", get_attribute(.env = sim, "current_clinic"))
                           }) %>%
 
                       seize("Doctor Clinic", 1) %>%
-                      timeout(function() rnorm(1, mean = 10, sd = 3)) %>%
+                      timeout(1) %>%
                       release("Doctor Clinic", 1) %>%
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1),
+                  
+                  # Nurse clinic
                   trajectory("Sister Clinic") %>%
                       set_attribute("current_clinic", 2) %>%
                       set_attribute(tag = "Sister", keys = "Sister", 
-                                    values = 2, mon = "+") %>%
-                      set_attribute("FuCounter", function()
+                                    values = 1, mod = "+") %>%
+                      set_attribute("ApptCounter", function()
                           get_attribute(.env = sim, "ApptCounter") + 1) %>%
                       log_(function() {
-                          paste("this is: ", get_attribute(.env = sim, "Doctor"))
+                          paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
+                      }) %>%
+                      log_(function() {
+                          paste("this is: ", get_attribute(.env = sim, "current_clinic"))
                       }) %>%
                       seize("Sister Clinic", 1) %>%
-                      timeout(function() rnorm(1, mean = 10, sd = 3)) %>%
+                      timeout(1) %>%
                       release("Sister Clinic", 1) %>%
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1),
+                  
+                  # Immunotherapy Clinic
                   trajectory("Immuno Clinic") %>%
                       set_attribute("current_clinic", 3) %>%
                       set_attribute(tag = "Immuno", keys = "Immuno", 
-                                    values = 3, mon = "+") %>%
-                      set_attribute("FuCounter", function()
+                                    values = 1, mod = "+") %>%
+                      set_attribute("ApptCounter", function()
                           get_attribute(.env = sim, "ApptCounter") + 1) %>%
+                      log_(function() {
+                          paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
+                      }) %>%
+                      log_(function() {
+                          paste("this is: ", get_attribute(.env = sim, "current_clinic"))
+                      }) %>%
                       seize("Immuno Clinic", 1) %>%
-                      timeout(function() rnorm(1, mean = 10, sd = 3)) %>%
+                      timeout(1) %>%
                       release("Immuno Clinic", 1) %>%
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1),
+                  
+                  # Specialist Clinic
                   trajectory("Derm Clinic") %>%
                       set_attribute("current_clinic", 4) %>%
                       set_attribute(tag = "Derm", keys = "Derm", 
-                                    values = 3, mon = "+") %>%
-                      set_attribute("FuCounter", function()
-                          get_attribute(.env = sim, "ApptCounter") + 1) %>%
-                      seize("Derm Clinic", 1) %>%
-                      timeout(function() rnorm(1, mean = 10, sd = 3)) %>%
-                      release("Derm Clinic", 1) %>%
-                      set_attribute("FuToDo", function()
-                          get_attribute(.env = sim, "FuToDo") - 1)
+                                    values = 1, mod = "+") %>%
+                          log_(function() {
+                              paste("this is: ", get_attribute(.env = sim, "current_clinic"))
+                          }) %>%
+                      branch(
+                          option = function() {
+                              current_derm <- get_attribute(.env=sim, "Derm")
+                              out <- if(current_derm == 1) {1} else {2}
+                              return(out)
+                          }, continue = c(T,T),
+                          tag = "derm branch",
+
+                          trajectory("First Derm") %>%
+                              set_attribute("ApptCounter", function()
+                                  get_attribute(.env = sim, "ApptCounter") + 1) %>%
+                              log_(function() {
+                                  paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
+                              }) %>%
+
+                              # set FollowUp number now so it remains static throughout patient traj
+                              set_attribute(tag = "DermClinicFUs", keys = "DermClinicFUs",
+                                            values = function() floor(rweibull(1, d_followup_shape,
+                                                                               d_followup_scale))) %>%
+                              set_attribute(tag = "FuToDo", keys = "FuToDo",
+                                    values = function() get_attribute(.env = sim,
+                                                                      "DermClinicFUs") + get_attribute(.env = sim, "FuToDo")) %>%
+                              set_prioritization(c(1, NA, NA)) %>%
+                              seize("Derm Clinic", 1) %>%
+                              timeout(1) %>%
+                              release("Derm Clinic", 1) %>%
+                              set_attribute("FuToDo", function()
+                                  get_attribute(.env = sim, "FuToDo") - 1),
+
+                          trajectory("Subsequent Derm") %>%
+                              set_attribute("ApptCounter", function()
+                                  get_attribute(.env = sim, "ApptCounter") + 1) %>%
+                              log_(function() {
+                                  paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
+                              }) %>%
+                              set_prioritization(c(1, NA, NA)) %>%
+                              seize("Derm Clinic", 1) %>%
+                              timeout(1) %>%
+                              release("Derm Clinic", 1) %>%
+                              set_attribute("FuToDo", function()
+                                  get_attribute(.env = sim, "FuToDo") - 1)
+                      ),
+                  # Branch for Discharge (when next_clinic is NA)
+                  trajectory("Discharge") %>%
+                      set_attribute(tag = "DischargeTime", keys = "DischargeTime", 
+                                    values = function() now(.env = sim), mod = "+") %>%
+                      set_attribute(tag = "Discharge", keys = "Discharge", 
+                                    values = 1, mod = "+") %>%
+                      seize("Discharge", 1) %>%
+                      release("Discharge", 1) %>%
+                      log_("Patient discharged")
     ) %>%
     
     rollback(target = "followup branch",
@@ -157,36 +224,52 @@ patient_trajectory <-
                                               "FuToDo") > 0) %>%
     # rollback(5) %>%
     # Monitor time of discharge
-    set_attribute(tag = "Discharge", keys = "Discharge", 
+    set_attribute(tag = "DischargeTime", keys = "DischargeTime", 
                   values = function() now(.env = sim), mod = "+") %>%
+    set_attribute(tag = "Discharge", keys = "Discharge", 
+                  values = 1, mod = "+") %>%
     seize(resource = "Discharge", 1) %>%
     release(resource = "Discharge", 1) %>%
     log_("Patient processing completed")
-?branch
+
 # check traj plot
 print(plot(patient_trajectory))
 
 # Add resources (clinics) to the environment
-sim %>%
-    add_resource("Doctor Clinic", capacity = slots_per_day) %>%
-    add_resource("Sister Clinic", capacity = slots_per_day) %>%
-    add_resource("Immuno Clinic", capacity = slots_per_day) %>%
-    add_resource("Derm Clinic", capacity = slots_per_day) %>%
-    add_resource("Discharge", capacity = Inf)
-
-# Generate patients and add them to the simulation
-sim %>%
-    add_generator("Patient", patient_trajectory, at(seq(0, 1000, by = 1)), mon = 2)  # 10 patients per day
+sim %>% 
+    add_resource("Doctor Clinic", capacity = rnorm(1, 48, 1)) %>%
+    add_resource("Sister Clinic", capacity = rnorm(1, 13, 1)) %>%
+    add_resource("Immuno Clinic", capacity = 20) %>%
+    add_resource("Derm Clinic", capacity = schedule(timetable = c(1,2,3,4,5,6,7), 
+                                             values = 
+                                                 c(rnorm(1,capMean,capSD),
+                                                   0,
+                                                   rnorm(1,capMean,capSD),
+                                                   0,
+                                                   rnorm(1,capMean,capSD),
+                                                   0,
+                                                   0),
+                                             period = 7.0)) %>%
+    add_resource("Discharge", capacity = Inf) %>%
+    add_generator(name_prefix = "Backlog", trajectory = patient_trajectory, 
+                  mon = 2,
+                  # understand initial list size
+                  distribution = at(rep(x = 0,
+                                        times = (initWlDr +
+                                                     initWlSister)))) %>%
+    add_generator(name_prefix = "NewPatient", trajectory = patient_trajectory, 
+                  distribution = function() rweibull(1, 1/demDistDrShape,
+                                                     1/demDistDrScale),
+                  mon = 2)
 
 # Run the simulation
-set.seed(3); 
+set.seed(4); 
 sim %>% 
     reset() %>% 
-    run(until = 1000,
+    run(until = 200,
         progress=progress::progress_bar$new()$update) %>% 
     wrap()
 })
-
 
 # Plot the resource usage over time
 # Check results section

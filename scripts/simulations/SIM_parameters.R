@@ -20,6 +20,28 @@ librarian::shelf(tidyverse, here, glue, simmer, simmer.plot, data.table, MASS,
 # ------------------------------------------------------------------------------
 # simulation parameters
 
+# Function to model waiting time before the first visit, depending on the first clinic and priority
+get_initial_first_appt_wait <- function(first_clinic, priority) {
+    if (first_clinic == "Dr") {
+        if (priority == "2 week") {
+            return(pmax(0, floor(rnorm(1, 10.1, 3.4))))  # Shortest wait time
+        } else if (priority == "Urgent") {
+            return(pmax(0, floor(rnorm(1, 144, 117))))  # Medium wait time
+        } else if (priority == "Routine") {
+            return(pmax(0, floor(rnorm(1, 220, 128.8))))  # Longest wait time
+        }
+    } else if (first_clinic == "Sister") {
+        if (priority == "Routine") {
+            return(pmax(0, floor(rnorm(1, 150, 100))))
+        } else {
+            return(0)  # Default, although it shouldn't happen since we only have Dr and Sister
+        }
+    }
+}
+
+priority <- if (first_clinic == "Dr") 
+    sample(c("2 week", "Urgent", "Routine"), 1, prob = c(0.495, 0.073, 0.432)) 
+else "Routine"
 # probability of attending each clinic
 propClinic <- read_rds(here("propClinic.rds")) |>
     rename("current_clinic" = source,
