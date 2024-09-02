@@ -1,6 +1,6 @@
 
 # # Load the CSV file (update the path as necessary)
-propClinic <- read_csv(here("propClinic.csv"))
+# propClinic <- read_csv(here("propClinic.csv"))
 
 # Create a mapping vector
 clinic_map <- c("Dr" = 1, "Sister" = 2, "Immuno" = 3, "Specialist" = 4)
@@ -27,9 +27,12 @@ get_next_clinic <- function(current_clinic, followup_count) {
     next_clinic <- sample(clinic_options$next_clinic, 1, prob = clinic_options$prop)
     return(next_clinic)
 }
-get_next_clinic(1, 3)
+
+# Function to determine number of available slots per day
+slots_per_day = 2
+
 # Define the patient trajectory
-?set_attribute
+
 ### ----------------------------------------------------------------------------
 # start simulation
 simmer_wrapper <- mclapply(1:5, function(i) {
@@ -49,7 +52,7 @@ patient_trajectory <-
                   values = 0, mon = "+") %>%
     # record time patient initially received appt letter
     set_attribute(tag = "ToR", keys = "TimeOfRef",
-                  values = function() now()) %>%
+                  values = function() now(.env = sim)) %>%
 
     log_("Patient booked") %>%
     timeout(function() rexp(1, rate = 1/5)) %>%  # Wait time
@@ -91,10 +94,13 @@ patient_trajectory <-
                       clinic_map <- c("Doctor Clinic" = 1, "Sister Clinic" = 2, 
                                       "Immuno Clinic" = 3, "Derm Clinic" = 4)
                       # Return the numeric value corresponding to the next clinic
+                      
                       return(clinic_map[next_clinic])
                   }, continue = c(T,T,T,T),
+                  tag = "followup branch",
                   trajectory("Doctor Clinic") %>%
                       # log_("test") %>%
+                      set_attribute("current_clinic", 1) %>%
                       set_attribute(tag = "Doctor", keys = "Doctor", 
                                     values = 1, mon = "+") %>%
                       set_attribute("FuCounter", function()
@@ -109,6 +115,7 @@ patient_trajectory <-
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1),
                   trajectory("Sister Clinic") %>%
+                      set_attribute("current_clinic", 2) %>%
                       set_attribute(tag = "Sister", keys = "Sister", 
                                     values = 2, mon = "+") %>%
                       set_attribute("FuCounter", function()
@@ -122,6 +129,7 @@ patient_trajectory <-
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1),
                   trajectory("Immuno Clinic") %>%
+                      set_attribute("current_clinic", 3) %>%
                       set_attribute(tag = "Immuno", keys = "Immuno", 
                                     values = 3, mon = "+") %>%
                       set_attribute("FuCounter", function()
@@ -132,6 +140,7 @@ patient_trajectory <-
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1),
                   trajectory("Derm Clinic") %>%
+                      set_attribute("current_clinic", 4) %>%
                       set_attribute(tag = "Derm", keys = "Derm", 
                                     values = 3, mon = "+") %>%
                       set_attribute("FuCounter", function()
@@ -142,18 +151,18 @@ patient_trajectory <-
                       set_attribute("FuToDo", function()
                           get_attribute(.env = sim, "FuToDo") - 1)
     ) %>%
-
-    # rollback(3,
-    #          check = function() get_attribute(.env = sim,
-    #                            "FuToDo") > 0) %>%
+    
+    rollback(target = "followup branch",
+             check = function() get_attribute(.env = sim,
+                                              "FuToDo") > 0) %>%
     # rollback(5) %>%
     # Monitor time of discharge
     set_attribute(tag = "Discharge", keys = "Discharge", 
-                  values = function() now(), mod = "+") %>%
+                  values = function() now(.env = sim), mod = "+") %>%
     seize(resource = "Discharge", 1) %>%
     release(resource = "Discharge", 1) %>%
     log_("Patient processing completed")
-
+?branch
 # check traj plot
 print(plot(patient_trajectory))
 
@@ -167,7 +176,7 @@ sim %>%
 
 # Generate patients and add them to the simulation
 sim %>%
-    add_generator("Patient", patient_trajectory, at(seq(0, 1000, by = 40)), mon = 2)  # 10 patients per day
+    add_generator("Patient", patient_trajectory, at(seq(0, 1000, by = 1)), mon = 2)  # 10 patients per day
 
 # Run the simulation
 set.seed(3); 
