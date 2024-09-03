@@ -1,8 +1,15 @@
 # to do
 # ALL wait times
+# - done but should check immuno and follow up times
+# - time between pre-Derm clinic and first Derm clinic
 # priorities
+# - need to do for nurses and derm
 # distributions
-# timeout after seize
+# cancellations
+# - how many days from appt date do cancels occurs? 
+# - how soon do people get an appt after cancellation?
+# - use renege instead for these two?
+# dna
 
 
 # # Load the CSV file (update the path as necessary)
@@ -10,7 +17,7 @@
 write_csv(propClinic, here("propClinicNum.csv"))
 # Create a mapping vector
 clinic_map <- c("Dr" = 1, "Sister" = 2, "Immuno" = 3, "Specialist" = 4)
-
+priority_map <- c("2 week" = 1, "Urgent" = 2, "Routine" = 3)
 # Apply the mapping to the relevant columns
 propClinic <- propClinic %>%
     mutate(current_clinic = clinic_map[current_clinic],
@@ -38,7 +45,7 @@ get_next_clinic <- function(current_clinic, followup_count) {
 # Define the patient trajectory
 ### ----------------------------------------------------------------------------
 # start simulation
-simmer_wrapper <- mclapply(1:5, function(i) {
+simmer_wrapper <- mclapply(1:10, function(i) {
     
     sim <- simmer("sim")
     
@@ -54,20 +61,53 @@ patient_trajectory <-
     set_attribute(tag = "ToR", keys = "TimeOfRef",
                   values = function() now(.env = sim)) %>%
 #### CREATING PRIORITIES HERE - SHOULD I DO IT OUTSIDE FIRST DOCTOR BRANCH OR INSIDE?
+    ### PRIO AND FIRST APPT COULD ALL BE ATTRIBUTES, THEN BRANCH LIKE THE BELOW ONE FOR SUBSEQUENT APPT. WOULD LOOK CLEANER
+    set_attribute(tag = "Priority", keys = "Priority",
+                  values = function() sample(c(1,2,3), 1, prob = c(0.495, 0.073, 0.432))) %>%
+    set_attribute(tag = "Priority Timeout", keys = "Priority Timeout",
+                  values = function() {
+                      priority <- get_attribute(.env = sim, "Priority")
+                      timeout <- if_else(priority == 1, pmax(0, floor(rnorm(1, 10.1, 3.4))),
+                                         if_else(priority == 2, pmax(0, floor(rnorm(1, 144, 117))),
+                                                 pmax(0, floor(rnorm(1, 220, 128.8)))))
+                      return(timeout)
+                  }) %>%
+
     # Step 1: Initial visit to either Doctor or Sister Clinic
-    branch(function() ifelse(runif(1) < firstIsDr, 1, 2), continue = TRUE,
+    branch(option = function() ifelse(runif(1) < firstIsDr, 1, 2), continue = TRUE,
            trajectory("Doctor Visit") %>%
-               branch(option = function(){
-                   
-               })
-               seize("Doctor Clinic", 1) %>%
-               timeout(1) %>%
-               release("Doctor Clinic", 1) %>%
-               set_attribute("current_clinic", 1),  # 1 refers to Doctor Clinic
+               timeout_from_attribute("Priority Timeout", keys = "DrTimeout", tag = "DrTimeout") %>%
+               branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, T),
+                      tag = "First appt cancellation",
+                      trajectory() %>%
+                          branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, T),
+                                 tag = "FirstDNA",
+                                 trajectory("Attended") %>%
+                                     seize("Doctor Clinic", 1) %>%
+                                     timeout(1) %>%
+                                     release("Doctor Clinic", 1) %>%
+                                     set_attribute(tag = "Doctor", keys = "Doctor", 
+                                                   values = 1, mod = "+") %>%
+                                     set_attribute("current_clinic", 1),
+                                 trajectory("DNA") %>%
+                                     seize("Doctor Clinic", 1) %>%
+                                     timeout(1) %>%
+                                     release("Doctor Clinic", 1) %>%
+                                     set_attribute("current_clinic", 1) %>%
+                                     rollback(target = "DrTimeout")
+                          ) %>%
+                      trajectory() %>%
+                          set_attribute(tag = "Cancelled", keys = "Cancelled", 
+                                        values = 1, mod = "+") %>%
+                          rollback(target = "DrTimeout")
+               ) %>%
            trajectory("Sister Visit") %>%
+               timeout_from_attribute("Priority Timeout") %>%
                seize("Sister Clinic", 1) %>%
                timeout(1) %>%
                release("Sister Clinic", 1) %>%
+               set_attribute(tag = "Sister", keys = "Sister", 
+                             values = 1, mod = "+") %>%
                set_attribute("current_clinic", 2)  # 2 refers to Sister Clinic
     ) %>%
     
@@ -113,7 +153,8 @@ patient_trajectory <-
                       log_(function() {
                           paste("this is: ", get_attribute(.env = sim, "current_clinic"))
                           }) %>%
-
+                      
+                      timeout(pmax(0, rweibull(1, 1, 50))) %>%
                       seize("Doctor Clinic", 1) %>%
                       timeout(1) %>%
                       release("Doctor Clinic", 1) %>%
@@ -133,6 +174,7 @@ patient_trajectory <-
                       log_(function() {
                           paste("this is: ", get_attribute(.env = sim, "current_clinic"))
                       }) %>%
+                      timeout(pmax(0, rweibull(1, 1, 50))) %>%
                       seize("Sister Clinic", 1) %>%
                       timeout(1) %>%
                       release("Sister Clinic", 1) %>%
@@ -152,6 +194,7 @@ patient_trajectory <-
                       log_(function() {
                           paste("this is: ", get_attribute(.env = sim, "current_clinic"))
                       }) %>%
+                      timeout(pmax(0, rpois(1, 2.785))) %>%
                       seize("Immuno Clinic", 1) %>%
                       timeout(1) %>%
                       release("Immuno Clinic", 1) %>%
@@ -189,6 +232,7 @@ patient_trajectory <-
                                     values = function() get_attribute(.env = sim,
                                                                       "DermClinicFUs") + get_attribute(.env = sim, "FuToDo")) %>%
                               set_prioritization(c(1, NA, NA)) %>%
+                              timeout(pmax(0, rpois(1, 2.785))) %>%
                               seize("Derm Clinic", 1) %>%
                               timeout(1) %>%
                               release("Derm Clinic", 1) %>%
@@ -202,6 +246,7 @@ patient_trajectory <-
                                   paste("ApptCounter incremented to:", get_attribute(.env = sim, "ApptCounter"))
                               }) %>%
                               set_prioritization(c(1, NA, NA)) %>%
+                              timeout(pmax(0, rpois(1, 2.785))) %>%
                               seize("Derm Clinic", 1) %>%
                               timeout(1) %>%
                               release("Derm Clinic", 1) %>%
@@ -251,12 +296,12 @@ sim %>%
                                                    0),
                                              period = 7.0)) %>%
     add_resource("Discharge", capacity = Inf) %>%
-    add_generator(name_prefix = "Backlog", trajectory = patient_trajectory, 
-                  mon = 2,
-                  # understand initial list size
-                  distribution = at(rep(x = 0,
-                                        times = (initWlDr +
-                                                     initWlSister)))) %>%
+    # add_generator(name_prefix = "Backlog", trajectory = patient_trajectory, 
+    #               mon = 2,
+    #               # understand initial list size
+    #               distribution = at(rep(x = 0,
+    #                                     times = (initWlDr +
+    #                                                  initWlSister)))) %>%
     add_generator(name_prefix = "NewPatient", trajectory = patient_trajectory, 
                   distribution = function() rweibull(1, 1/demDistDrShape,
                                                      1/demDistDrScale),
@@ -266,7 +311,7 @@ sim %>%
 set.seed(4); 
 sim %>% 
     reset() %>% 
-    run(until = 200,
+    run(until = 2000,
         progress=progress::progress_bar$new()$update) %>% 
     wrap()
 })
@@ -285,12 +330,15 @@ arrivals_no_resource$waiting<-arrivals_no_resource$end_time -
     arrivals_no_resource$activity_time
 
 print(plot(get_mon_resources(envs),steps=TRUE))
-print(plot(get_mon_arrivals(envs), steps = TRUE))
-print(plot(get_mon_attributes(envs), steps = TRUE))
+# print(plot(get_mon_arrivals(envs), steps = TRUE))
+# print(plot(get_mon_attributes(envs), steps = TRUE))
 
 df_attributes <- get_mon_attributes(envs) |>
-    mutate(time = floor(time))
+    mutate(time = floor(time),
+           value = floor(value))
 df_arrivals <- get_mon_arrivals(envs)
-df_out <- fn_summarise(df_attributes)
+df_out <- fn_summarise(df_attributes) |>
+    mutate(TimeOfRef = floor(TimeOfRef),
+           DischargeTime = floor(DischargeTime))
 
 

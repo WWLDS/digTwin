@@ -39,9 +39,9 @@ get_initial_first_appt_wait <- function(first_clinic, priority) {
     }
 }
 
-priority <- if (first_clinic == "Dr") 
-    sample(c("2 week", "Urgent", "Routine"), 1, prob = c(0.495, 0.073, 0.432)) 
-else "Routine"
+# priority <- if (first_clinic == "Dr") 
+#     sample(c("2 week", "Urgent", "Routine"), 1, prob = c(0.495, 0.073, 0.432)) 
+# else "Routine"
 # probability of attending each clinic
 propClinic <- read_rds(here("propClinic.rds")) |>
     rename("current_clinic" = source,
@@ -237,12 +237,9 @@ chances <- function() {
     return(out)
 }
 
-firstAppt <- function () {
-    
+firstAppt <- function () { 
     out <- if(runif(1) <= firstIsDr) {0} else {1}
-    
     return(out)
-    
 }
 firstIsDr
 
