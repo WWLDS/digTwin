@@ -10,6 +10,8 @@
 # - how soon do people get an appt after cancellation?
 # - use renege instead for these two?
 # dna
+# do patients take multiple slots per day?? Is this already accounted for?
+# ADD CANCELLED AND DNA TO EACH BRANCH
 
 
 # # Load the CSV file (update the path as necessary)
@@ -40,17 +42,17 @@ get_next_clinic <- function(current_clinic, followup_count) {
         next_clinic <- sample(clinic_options$next_clinic, 1, prob = clinic_options$prop)
         return(next_clinic)
 }
-
-
+?set_attribute
+?rollback
 # Define the patient trajectory
 ### ----------------------------------------------------------------------------
 # start simulation
-simmer_wrapper <- mclapply(1:10, function(i) {
+simmer_wrapper <- mclapply(1:5, function(i) {
     
     sim <- simmer("sim")
     
 patient_trajectory <- 
-    trajectory() %>%
+    trajectory("Main") %>%
 
     set_prioritization(c(0, NA, NA)) %>%
     
@@ -77,11 +79,11 @@ patient_trajectory <-
     branch(option = function() ifelse(runif(1) < firstIsDr, 1, 2), continue = TRUE,
            trajectory("Doctor Visit") %>%
                timeout_from_attribute("Priority Timeout", keys = "DrTimeout", tag = "DrTimeout") %>%
-               branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, T),
-                      tag = "First appt cancellation",
-                      trajectory() %>%
-                          branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, T),
-                                 tag = "FirstDNA",
+               branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, F),
+                      tag = "Firstapptcancellation",
+                      trajectory("Not cancelled") %>%
+                          branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, F),
+                                 tag = "Attendance",
                                  trajectory("Attended") %>%
                                      seize("Doctor Clinic", 1) %>%
                                      timeout(1) %>%
@@ -94,13 +96,15 @@ patient_trajectory <-
                                      timeout(1) %>%
                                      release("Doctor Clinic", 1) %>%
                                      set_attribute("current_clinic", 1) %>%
+                                     set_attribute(tag = "DNA", keys = "DNA", 
+                                                   values = 1, mod = "+") %>%
                                      rollback(target = "DrTimeout")
-                          ) %>%
-                      trajectory() %>%
+                          ),
+                      trajectory("Cancelled") %>%
                           set_attribute(tag = "Cancelled", keys = "Cancelled", 
                                         values = 1, mod = "+") %>%
                           rollback(target = "DrTimeout")
-               ) %>%
+               ),
            trajectory("Sister Visit") %>%
                timeout_from_attribute("Priority Timeout") %>%
                seize("Sister Clinic", 1) %>%
@@ -117,7 +121,7 @@ patient_trajectory <-
     }) %>%
         
     # Step 2: Follow-up appointments
-    # trajectory() %>%
+    timeout(0, tag = "followups") %>%
               branch(
                   option = function() {
                       # Get the current clinic and followup number
@@ -141,6 +145,7 @@ patient_trajectory <-
                   
                   # Doctor clinic
                   trajectory("Doctor Clinic") %>%
+                      timeout(0, tag = "DoctorFU") %>%
                       # log_("test") %>%
                       set_attribute("current_clinic", 1) %>%
                       set_attribute(tag = "Doctor", keys = "Doctor", 
@@ -155,14 +160,26 @@ patient_trajectory <-
                           }) %>%
                       
                       timeout(pmax(0, rweibull(1, 1, 50))) %>%
-                      seize("Doctor Clinic", 1) %>%
-                      timeout(1) %>%
-                      release("Doctor Clinic", 1) %>%
-                      set_attribute("FuToDo", function()
-                          get_attribute(.env = sim, "FuToDo") - 1),
+                      branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, F),
+                             tag = "attendance",
+                             trajectory("attended") %>%
+                                 seize("Doctor Clinic", 1) %>%
+                                 timeout(1) %>%
+                                 release("Doctor Clinic", 1) %>%
+                                 set_attribute("FuToDo", function()
+                                     get_attribute(.env = sim, "FuToDo") - 1),
+                             trajectory("DNA") %>%
+                                 seize("Doctor Clinic", 1) %>%
+                                 timeout(1) %>%
+                                 release("Doctor Clinic", 1) %>%
+                                 set_attribute(tag = "DNA", keys = "DNA", 
+                                               values = 1, mod = "+") %>%
+                                 rollback(target = "DoctorFU")
+                      ),
                   
                   # Nurse clinic
                   trajectory("Sister Clinic") %>%
+                      timeout(0, tag = "SisterFU") %>%
                       set_attribute("current_clinic", 2) %>%
                       set_attribute(tag = "Sister", keys = "Sister", 
                                     values = 1, mod = "+") %>%
@@ -175,11 +192,22 @@ patient_trajectory <-
                           paste("this is: ", get_attribute(.env = sim, "current_clinic"))
                       }) %>%
                       timeout(pmax(0, rweibull(1, 1, 50))) %>%
-                      seize("Sister Clinic", 1) %>%
-                      timeout(1) %>%
-                      release("Sister Clinic", 1) %>%
-                      set_attribute("FuToDo", function()
-                          get_attribute(.env = sim, "FuToDo") - 1),
+                      branch(option = function() ifelse(runif(1) < 0.9, 1, 2), continue = c(T, F),
+                             tag = "attendance",
+                             trajectory("attended") %>%
+                                 seize("Sister Clinic", 1) %>%
+                                 timeout(1) %>%
+                                 release("Sister Clinic", 1) %>%
+                                 set_attribute("FuToDo", function()
+                                     get_attribute(.env = sim, "FuToDo") - 1),
+                             trajectory("DNA") %>%
+                                 seize("Sister Clinic", 1) %>%
+                                 timeout(1) %>%
+                                 release("Sister Clinic", 1) %>%
+                                 set_attribute(tag = "DNA", keys = "DNA", 
+                                               values = 1, mod = "+") %>%
+                                 rollback(target = "SisterFU")
+                      ),
                   
                   # Immunotherapy Clinic
                   trajectory("Immuno Clinic") %>%
@@ -264,7 +292,7 @@ patient_trajectory <-
                       log_("Patient discharged")
     ) %>%
     
-    rollback(target = "followup branch",
+    rollback(target = "followups",
              check = function() get_attribute(.env = sim,
                                               "FuToDo") > 0) %>%
     # rollback(5) %>%
