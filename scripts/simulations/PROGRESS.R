@@ -556,3 +556,4 @@ ggplot(active_patients_df, aes(x = Time, y = ActivePatients)) +
          x = "Time",
          y = "Number of Active Patients") +
     theme_minimal()
+data
